@@ -1,182 +1,246 @@
-const { Low } = require("lowdb");
-const { JSONFile } = require("lowdb/node");
+/* eslint-disable no-unused-vars */
+// database.js
+const { Low } = require('lowdb');
+const { JSONFile } = require('lowdb/node');
 
 class Database {
     constructor() {
         this.db = null;
 
-        // Default user schema
-        this.defaultUser = {
+        // ✅ Define defaults once, reuse everywhere
+        this.userDefaults = {
             id: null,
-            name: "",
             balance: 0,
             experience: 0,
+            lastDaily: null,
+            inventory: [],
+            dailyStreak: 0,
+            timezone: 'UTC',
+            gambleHistory: [],
+            power: "",
+            race: "Human",
+            firstTime: true,
+            roleplayActions: {},
+            name: '',
             level: 1,
-            roleplayActions: {} // <-- NEW ROLEPLAY STORAGE
         };
     }
 
-    // ---------------------------
-    // INITIALIZATION
-    // ---------------------------
     async initialize() {
-        const adapter = new JSONFile("db.json");
-
-        // initialize LowDB with default structure
-        this.db = new Low(adapter, {
+        const defaultData = {
             users: [],
-            settings: {}
-        });
-
+            settings: {},
+        };
+        const adapter = new JSONFile('db.json');
+        this.db = new Low(adapter, defaultData);
         await this.db.read();
-        if (!this.db.data) {
-            this.db.data = { users: [], settings: {} };
+        if (this.db.data === null) {
+            this.db.data = defaultData;
             await this.db.write();
         }
     }
 
+    async getData() {
+        if (!this.db) throw new Error('Database not initialized');
+        return this.db.data;
+    }
+
     async write() {
-        if (!this.db) throw new Error("Database not initialized.");
+        if (!this.db) throw new Error('Database not initialized');
         await this.db.write();
     }
 
-    // ---------------------------
-    // USER HANDLING
-    // ---------------------------
+    async getUserData(userId) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
 
-    async ensureUser(userId) {
-        if (!this.db) throw new Error("Database not initialized.");
-        if (!userId || typeof userId !== "string") {
-            throw new Error("Invalid user ID");
-        }
+        return this.db.data.users.find(u => u.id === userId) || null;
+    }
 
-        let user = this.db.data.users.find(u => u.id === userId);
+    async saveUserData(userId, userData) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
 
-        // Create new user
-        if (!user) {
-            user = { ...this.defaultUser, id: userId };
-            this.db.data.users.push(user);
-            await this.write();
-            return user;
-        }
+        let userIndex = this.db.data.users.findIndex(u => u.id === userId);
 
-        // Ensure all default fields exist
-        let updated = false;
-        for (const [key, def] of Object.entries(this.defaultUser)) {
-            if (user[key] == null) {
-                user[key] = def;
-                updated = true;
+        if (userIndex === -1) {
+            // ✅ Merge defaults with provided data
+            const newUser = {
+                ...this.userDefaults,
+                id: userId,
+                ...userData
+            };
+            this.db.data.users.push(newUser);
+        } else {
+            // ✅ Ignore undefined values, allow null to overwrite
+            const cleanedData = Object.fromEntries(
+                Object.entries(userData).filter(([_, v]) => v !== undefined)
+            );
+
+            this.db.data.users[userIndex] = {
+                ...this.db.data.users[userIndex],
+                ...cleanedData
+            };
+
+            // ✅ Backfill any missing fields with defaults
+            for (const [key, value] of Object.entries(this.userDefaults)) {
+                if (this.db.data.users[userIndex][key] == null) {
+                    this.db.data.users[userIndex][key] = value;
+                }
             }
         }
 
-        if (updated) await this.write();
-        return user;
-    }
-
-    async getUser(userId) {
-        await this.ensureUser(userId);
+        await this.write();
         return this.db.data.users.find(u => u.id === userId);
     }
 
-    // ---------------------------
-    // ECONOMY / LEVELING
-    // ---------------------------
+    async updateUserBalance(userId, newBalance) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
+        if (typeof newBalance !== 'number' || isNaN(newBalance)) throw new Error('Invalid balance amount');
 
-    async setBalance(userId, amount) {
         const user = await this.ensureUser(userId);
-        user.balance = Math.max(0, Number(amount) || 0);
+        user.balance = Math.max(0, newBalance); // ✅ No negatives
         await this.write();
-        return user.balance;
+        return user;
     }
 
-    async addBalance(userId, amount) {
-        const user = await this.ensureUser(userId);
-        user.balance = Math.max(0, user.balance + Number(amount));
-        await this.write();
-        return user.balance;
-    }
+    async ensureUser(userId) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
 
-    async setExperience(userId, xp) {
-        const user = await this.ensureUser(userId);
-        xp = Number(xp);
-        if (isNaN(xp)) throw new Error("Invalid experience value");
+        this.db.data ||= {};
+        this.db.data.users ||= [];
 
-        user.experience = xp;
-        user.level = this.calculateLevel(xp);
+        let user = this.db.data.users.find(u => u.id === userId);
 
-        await this.write();
-        return user.experience;
-    }
-
-    async addExperience(userId, amount) {
-        const user = await this.ensureUser(userId);
-        const newXP = user.experience + Number(amount);
-
-        user.experience = newXP;
-        user.level = this.calculateLevel(newXP);
-
-        await this.write();
-        return user.experience;
-    }
-
-    calculateLevel(xp) {
-        // Simple progression: every 1000 XP = +1 level
-        return 1 + Math.floor(xp / 1000);
-    }
-
-    // ---------------------------
-    // ROLEPLAY ACTION STORAGE
-    // ---------------------------
-
-    async addRoleplayAction(userId, actionName, data = {}) {
-        const user = await this.ensureUser(userId);
-
-        if (typeof actionName !== "string" || actionName.trim() === "") {
-            throw new Error("Invalid roleplay action name");
+        if (!user) {
+            // ✅ Create new user with defaults
+            user = { ...this.userDefaults, id: userId };
+            this.db.data.users.push(user);
+            await this.write();
+        } else {
+            // ✅ Backfill missing fields for old users
+            let updated = false;
+            for (const [key, value] of Object.entries(this.userDefaults)) {
+                if (user[key] == null) {
+                    user[key] = value;
+                    updated = true;
+                }
+            }
+            if (updated) await this.write();
         }
 
-        // Ensure action bucket exists
-        if (!user.roleplayActions[actionName]) {
-            user.roleplayActions[actionName] = [];
+        return user;
+    }
+
+    async checkUserExists(userId) {
+        if (!this.db) throw new Error('Database not initialized');
+        return this.db.data.users.some(u => u.id === userId);
+    }
+
+    async getUserInventory(userId) {
+        const user = await this.ensureUser(userId);
+        return user.inventory || [];
+    }
+
+    async getUserExperience(userId) {
+        const user = await this.ensureUser(userId);
+        return user.experience || 0;
+    }
+
+    async updateUserInventory(userId, items = [], action = "add") {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
+        if (!Array.isArray(items) || items.length === 0) throw new Error('Items must be a non-empty array');
+
+        const user = await this.ensureUser(userId);
+
+        if (!Array.isArray(user.inventory)) {
+            user.inventory = [];
         }
 
-        // Add action entry
-        user.roleplayActions[actionName].push({
-            timestamp: Date.now(),
-            ...data
-        });
+        for (const item of items) {
+            if (typeof item.name !== 'string' || typeof item.quantity !== 'number') {
+                throw new Error('Each item must have a name (string) and quantity (number)');
+            }
+
+            const index = user.inventory.findIndex(i => i.name === item.name);
+
+            if (action === "add") {
+                if (index !== -1) {
+                    user.inventory[index].quantity += item.quantity;
+                } else {
+                    user.inventory.push({ name: item.name, quantity: item.quantity });
+                }
+            } else if (action === "remove") {
+                if (index !== -1) {
+                    user.inventory[index].quantity -= item.quantity;
+                    if (user.inventory[index].quantity <= 0) {
+                        user.inventory.splice(index, 1);
+                    }
+                }
+            } else {
+                throw new Error('Invalid action. Use "add" or "remove".');
+            }
+        }
 
         await this.write();
-        return user.roleplayActions[actionName];
+        return user.inventory;
     }
 
-    async getRoleplayActions(userId, actionName) {
+    async updateUserExperience(userId, newExperience) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
+        if (typeof newExperience !== 'number' || isNaN(newExperience)) throw new Error('Invalid experience amount');
+
         const user = await this.ensureUser(userId);
-        return user.roleplayActions[actionName] || [];
-    }
-
-    // ---------------------------
-    // ADMIN / RESET FUNCTIONS
-    // ---------------------------
-
-    async resetUser(userId) {
-        if (!this.db) throw new Error("Database not initialized.");
-
-        const index = this.db.data.users.findIndex(u => u.id === userId);
-        if (index === -1) throw new Error("User not found");
-
-        this.db.data.users.splice(index, 1);
+        user.experience = newExperience;
         await this.write();
-
-        return true;
+        return user;
     }
 
-    async clearRoleplayActions(userId) {
+    async incrementUserBalance(userId, amount) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
+        if (typeof amount !== 'number' || isNaN(amount)) throw new Error('Invalid balance amount');
+
         const user = await this.ensureUser(userId);
-        user.roleplayActions = {};
+        user.balance = Math.max(0, user.balance + amount);
         await this.write();
-        return true;
+        return user;
+    }
+
+    async recordGambleHistory(userId, entry) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
+
+        const user = await this.ensureUser(userId);
+
+        if (!Array.isArray(user.gambleHistory)) {
+            user.gambleHistory = [];
+        }
+
+        user.gambleHistory.unshift(entry);
+
+        if (user.gambleHistory.length > 10) {
+            user.gambleHistory = user.gambleHistory.slice(0, 10);
+        }
+
+        await this.write();
+    }
+
+    async resetUserData(userId) {
+        if (!this.db) throw new Error('Database not initialized');
+        if (typeof userId !== 'string' || userId.trim() === '') throw new Error('Invalid user ID');
+
+        const userIndex = this.db.data.users.findIndex(u => u.id === userId);
+        if (userIndex === -1) throw new Error('User not found');
+
+        this.db.data.users[userIndex] = { ...this.userDefaults, id: userId };
+        await this.write();
     }
 }
 
-module.exports = new Database();
+const database = new Database();
+module.exports = database;
