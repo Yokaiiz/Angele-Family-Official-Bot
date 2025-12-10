@@ -476,7 +476,7 @@ async function handleUnlockChannelCommand(interaction) {
 
         return interaction.reply({
             content: `🔓 Successfully unlocked ${channel}.`,
-            ephemeral: false
+            ephemeral: true
         });
 
     } catch (error) {

@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 
 const database = require("./database.js");
-const { handlePingCommand, handleAddRoleCommand, handleRemoveRoleCommand, handleBanCommand, handleKickCommand, handleMuteCommand, handleLockDownChannelCommand } = require("./commands.js");
+const { handlePingCommand, handleAddRoleCommand, handleRemoveRoleCommand, handleBanCommand, handleKickCommand, handleMuteCommand, handleLockDownChannelCommand, handleUnlockChannelCommand } = require("./commands.js");
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const BOT_OWNER_ID = process.env.BOT_OWNER_ID;
@@ -132,7 +132,7 @@ client.on("interactionCreate", async interaction => {
                 case 'kick': return handleKickCommand(interaction);
                 case 'mute': return handleMuteCommand(interaction);
                 case 'lockdown': return handleLockDownChannelCommand(interaction);
-                case 'unlock': return handleLockDownChannelCommand(interaction);
+                case 'unlock': return handleUnlockChannelCommand(interaction);
                 default:
                     return interaction.reply({
                         content: "Unknown command.",
