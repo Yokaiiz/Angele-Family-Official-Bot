@@ -298,7 +298,7 @@ async function handleMuteCommand(interaction) {
     const botMember = interaction.guild.members.me;
     const logChannel = interaction.guild.channels.cache.get('1445792025088884756');
 
-    // User perm check
+    // User permission check
     if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
         return interaction.reply({
             content: "You do not have permission to mute members.",
@@ -306,10 +306,10 @@ async function handleMuteCommand(interaction) {
         });
     }
 
-    // Bot perm check
+    // Bot permission check
     if (!botMember.permissions.has(PermissionFlagsBits.ModerateMembers)) {
         return interaction.reply({
-            content: "I do not have permission to mute members.",
+            content: "I do not have permission to mute members. (Grant `Timeout Members` in role settings.)",
             ephemeral: true
         });
     }
@@ -322,7 +322,7 @@ async function handleMuteCommand(interaction) {
         });
     }
 
-    // Cannot mute the server owner
+    // Cannot mute owner
     if (member.id === interaction.guild.ownerId) {
         return interaction.reply({
             content: "I cannot mute the server owner.",
@@ -330,26 +330,24 @@ async function handleMuteCommand(interaction) {
         });
     }
 
-    // Bot must be above the member in hierarchy
+    // Role hierarchy checks
     if (member.roles.highest.position >= botMember.roles.highest.position) {
         return interaction.reply({
-            content: "I cannot mute this user because their highest role is above or equal to mine.",
+            content: "❌ I cannot mute this user because their role is above or equal to mine.",
             ephemeral: true
         });
     }
 
-    // User must be above the target in hierarchy (unless server owner)
     if (
         member.roles.highest.position >= interaction.member.roles.highest.position &&
         interaction.member.id !== interaction.guild.ownerId
     ) {
         return interaction.reply({
-            content: "You cannot mute this user because their highest role is above or equal to yours.",
+            content: "❌ You cannot mute this user because their role is above or equal to yours.",
             ephemeral: true
         });
     }
 
-    // Convert minutes to milliseconds
     const durationMs = duration * 60 * 1000;
 
     try {
@@ -357,19 +355,20 @@ async function handleMuteCommand(interaction) {
 
         if (logChannel) {
             logChannel.send(
-                `**${member.user.tag}** was muted by **${interaction.user.tag}** for **${duration} minutes**.`
+                `🔇 **${member.user.tag}** muted by **${interaction.user.tag}** for **${duration} minutes**.`
             );
         }
 
         return interaction.reply({
-            content: `Successfully muted **${member.user.tag}** for **${duration} minutes**.`,
+            content: `✅ Muted **${member.user.tag}** for **${duration} minutes**.`,
             ephemeral: true
         });
 
     } catch (error) {
-        console.error(error);
+        console.error("Mute error:", error);
+
         return interaction.reply({
-            content: "There was an error muting the member. Please ensure I have the correct permissions and hierarchy.",
+            content: "⚠️ Failed to mute. This usually means my role is below the target or I lack `Timeout Members` permission.",
             ephemeral: true
         });
     }
