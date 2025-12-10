@@ -50,7 +50,9 @@ const commands = [
         .addUserOption(option => option.setName('member').setDescription('The member you wish to mute.').setRequired(true))
         .addIntegerOption(option => option.setName('duration').setDescription('Duration of the mute in minutes.').setRequired(true)),
     new SlashCommandBuilder().setName('lockdown').setDescription('locks down a channel.')
-        .addChannelOption(option => option.setName('channel').setDescription('The channel you wish to lockdown.').setRequired(false))
+        .addChannelOption(option => option.setName('channel').setDescription('The channel you wish to lockdown.').setRequired(false)),
+    new SlashCommandBuilder().setName('unlock').setDescription('unlocks a channel.')
+        .addChannelOption(option => option.setName('channel').setDescription('The channel you wish to unlock.').setRequired(false)),
 ].map(c => c.toJSON());
 
 // REST for slash command deployment
@@ -130,6 +132,7 @@ client.on("interactionCreate", async interaction => {
                 case 'kick': return handleKickCommand(interaction);
                 case 'mute': return handleMuteCommand(interaction);
                 case 'lockdown': return handleLockDownChannelCommand(interaction);
+                case 'unlock': return handleLockDownChannelCommand(interaction);
                 default:
                     return interaction.reply({
                         content: "Unknown command.",

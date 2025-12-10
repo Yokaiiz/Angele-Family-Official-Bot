@@ -437,6 +437,59 @@ async function handleLockDownChannelCommand(interaction) {
     }
 }
 
+async function handleUnlockChannelCommand(interaction) {
+    const channel = interaction.options.getChannel('channel') || interaction.channel;
+    const botMember = interaction.guild.members.me;
+
+    // User permission check
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({
+            content: "❌ You do not have permission to manage channels.",
+            ephemeral: true
+        });
+    }
+
+    // Bot permission check
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({
+            content: "❌ I do not have permission to manage channels.",
+            ephemeral: true
+        });
+    }
+
+    // Validate channel type
+    if (!channel.isTextBased() || channel.type === 1) { 
+        // channel.type === 1 prevents selecting DM channels in some cases
+        return interaction.reply({
+            content: "❌ I can only unlock text channels within servers.",
+            ephemeral: true
+        });
+    }
+
+    try {
+        await channel.permissionOverwrites.edit(
+            interaction.guild.roles.everyone,
+            {
+                SendMessages: null,
+                AddReactions: null
+            }
+        );
+
+        return interaction.reply({
+            content: `🔓 Successfully unlocked ${channel}.`,
+            ephemeral: false
+        });
+
+    } catch (error) {
+        console.error("Unlock command error:", error);
+
+        return interaction.reply({
+            content: "❌ There was an error unlocking the channel. Make sure I have permission and that my role is high enough.",
+            ephemeral: true
+        });
+    }
+}
+
 module.exports = {
     handlePingCommand,
     handleAddRoleCommand,
@@ -445,4 +498,5 @@ module.exports = {
     handleKickCommand,
     handleMuteCommand,
     handleLockDownChannelCommand,
+    handleUnlockChannelCommand,
 };
