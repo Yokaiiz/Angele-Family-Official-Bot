@@ -394,22 +394,22 @@ async function handleLockDownChannelCommand(interaction) {
         });
     }
 
-    // Cannot lockdown DMs or unsupported channel types
-    if (!channel.isTextBased()) {
+    // Must be a text channel
+    if (!channel.isTextBased() || channel.type === 1) {
         return interaction.reply({
             content: "I can only lock down text channels.",
             ephemeral: true
         });
     }
 
-    // Bot must be above any role the channel overwrites
+    // ✅ Hierarchy safety: bot must be above roles in overwrites
     for (const overwrite of channel.permissionOverwrites.cache.values()) {
-        if (overwrite.type === 0) { // Role overwrite
+        if (overwrite.type === 0) { // role overwrite
             const role = interaction.guild.roles.cache.get(overwrite.id);
 
             if (role && role.position >= botMember.roles.highest.position) {
                 return interaction.reply({
-                    content: `I cannot modify this channel because it contains overwrites for the role **${role.name}**, which is above or equal to my highest role.`,
+                    content: `❌ I cannot modify this channel because it has an overwrite for **${role.name}**, which is above or equal to my role.`,
                     ephemeral: true
                 });
             }
@@ -417,20 +417,25 @@ async function handleLockDownChannelCommand(interaction) {
     }
 
     try {
-        await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
-            SendMessages: false,
-            AddReactions: false,
-        });
+        // ✅ Lock channel by denying everyone send messages & reactions
+        await channel.permissionOverwrites.edit(
+            interaction.guild.roles.everyone,
+            {
+                SendMessages: false,
+                AddReactions: false,
+            }
+        );
 
         return interaction.reply({
-            content: `Successfully locked down the channel ${channel}.`,
-            ephemeral: true
+            content: `🔒 Successfully locked down **${channel.name}**.`,
+            ephemeral: false
         });
 
     } catch (error) {
-        console.error(error);
+        console.error("Lockdown error:", error);
+
         return interaction.reply({
-            content: "There was an error locking down the channel. Please ensure I have the correct permissions and hierarchy position.",
+            content: "⚠️ There was an error locking the channel. This usually means my role is below one of the channel overwrite roles.",
             ephemeral: true
         });
     }
