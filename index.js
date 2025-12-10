@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 
 const database = require("./database.js");
-const { handlePingCommand } = require("./commands.js");
+const { handlePingCommand, handleAddRoleCommand, handleRemoveRoleCommand, handleBanCommand, handleKickCommand, handleMuteCommand, handleLockDownChannelCommand } = require("./commands.js");
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const BOT_OWNER_ID = process.env.BOT_OWNER_ID;
@@ -33,7 +33,24 @@ const client = new Client({
 const commands = [
     new SlashCommandBuilder()
         .setName("ping")
-        .setDescription("Replies with your mention.")
+        .setDescription("Replies with your mention."),
+    new SlashCommandBuilder().setName('add_role').setDescription('Adds a role to a member')
+        .addUserOption(option => option.setName('member').setDescription('The member you wish to add the role to.').setRequired(true))
+        .addRoleOption(option => option.setName('role').setDescription('the role you wish to add.').setRequired(true)),
+    new SlashCommandBuilder().setName('remove_role').setDescription('Removes a role from a member.')
+        .addUserOption(option => option.setName('member').setDescription('The member you wish to add the role to.').setRequired(true))
+        .addRoleOption(option => option.setName('role').setDescription('the role you wish to add to the member.').setRequired(true)),
+    new SlashCommandBuilder().setName('ban').setDescription('Bans a member from the server.')
+        .addUserOption(option => option.setName('member').setDescription('The member you wish to ban.').setRequired(true))
+        .addStringOption(option => option.setName('reason').setDescription('The reason for the ban.').setRequired(false)),
+    new SlashCommandBuilder().setName('kick').setDescription('Kicks a member from the server.')
+        .addUserOption(option => option.setName('member').setDescription('The member you wish to kick.').setRequired(true))
+        .addStringOption(option => option.setName('reason').setDescription('The reason for the kick.').setRequired(false)),
+    new SlashCommandBuilder().setName('mute').setDescription('Mutes a member in the server.')
+        .addUserOption(option => option.setName('member').setDescription('The member you wish to mute.').setRequired(true))
+        .addIntegerOption(option => option.setName('duration').setDescription('Duration of the mute in minutes.').setRequired(true)),
+    new SlashCommandBuilder().setName('lockdown').setDescription('locks down a channel.')
+        .addChannelOption(option => option.setName('channel').setDescription('The channel you wish to lockdown.').setRequired(false))
 ].map(c => c.toJSON());
 
 // REST for slash command deployment
@@ -107,6 +124,12 @@ client.on("interactionCreate", async interaction => {
         try {
             switch (cmd) {
                 case "ping": return handlePingCommand(interaction);
+                case 'add_role': return handleAddRoleCommand(interaction);
+                case 'remove_role': return handleRemoveRoleCommand(interaction);
+                case 'ban': return handleBanCommand(interaction);
+                case 'kick': return handleKickCommand(interaction);
+                case 'mute': return handleMuteCommand(interaction);
+                case 'lockdown': return handleLockDownChannelCommand(interaction);
                 default:
                     return interaction.reply({
                         content: "Unknown command.",
