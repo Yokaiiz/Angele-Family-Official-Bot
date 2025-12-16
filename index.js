@@ -5,11 +5,14 @@ const {
     Partials,
     REST,
     SlashCommandBuilder,
-    Routes
+    Routes,
+    EmbedBuilder,
+    Colors,
 } = require("discord.js");
 
 const database = require("./database.js");
 const { handlePingCommand, handleAddRoleCommand, handleRemoveRoleCommand, handleBanCommand, handleKickCommand, handleMuteCommand, handleLockDownChannelCommand, handleUnlockChannelCommand } = require("./commands.js");
+const leo = require('leo-profanity');
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const BOT_OWNER_ID = process.env.BOT_OWNER_ID;
@@ -90,8 +93,106 @@ function setCooldown(userId, cmd, ms) {
 }
 
 // ------------------------------
-// Interaction handler
+// Interaction handler / message moderation
 // ------------------------------
+
+// Minimal whitelist for false-positive avoidance (configurable)
+const profanityWhitelist = [
+        // Add allowed words / exceptions here, lowercase
+        'pass',
+        'assignment'
+];
+
+function escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeText(text) {
+        if (!text) return '';
+        // Lowercase
+        let t = String(text).toLowerCase();
+        // Unicode normalize and strip diacritics
+        t = t.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+        // Replace common leetspeak and obfuscation characters
+        t = t.replace(/[4@ÁÀÂÄÃ]/gi, 'a')
+                 .replace(/[3€]/gi, 'e')
+                 .replace(/[1!|íìîï]/gi, 'i')
+                 .replace(/[0oóòôöõ]/gi, 'o')
+                 .replace(/[5$]/gi, 's')
+                 .replace(/[7+]/gi, 't')
+                 .replace(/\bkk\b/gi, 'k');
+        // Collapse non-word characters except spaces so words remain separable
+        t = t.replace(/[\W_]+/g, ' ');
+        // Collapse multiple spaces
+        t = t.replace(/\s+/g, ' ').trim();
+        return t;
+}
+
+leo.loadDictionary();
+
+// Track recently-logged message IDs to avoid duplicate logs
+const recentlyLogged = new Map(); // messageId -> timestamp
+const RECENT_LOG_TTL = 30 * 1000; // 30 seconds
+
+client.on('messageCreate', async (message) => {
+    try {
+        if (message.author?.bot || !message.guild) return;
+
+        const original = String(message.content || '');
+        if (!original.trim()) return;
+        const normalized = normalizeText(original);
+
+        // Whitelist exact-word matches to avoid false positives
+        for (const w of profanityWhitelist) {
+            const rx = new RegExp('\\b' + escapeRegex(w.toLowerCase()) + '\\b');
+            if (rx.test(normalized)) return;
+        }
+
+        // Use leo-profanity for detection on normalized content
+        const hasProfanity = leo.check(normalized);
+        if (!hasProfanity) return;
+
+        // Try to delete the message if possible
+        try {
+            if (message.deletable) await message.delete();
+        } catch (delErr) {
+            console.error('Failed to delete message with profanity:', delErr);
+        }
+
+        // Send log to configured channel (best-effort)
+        const logChannel = message.guild.channels.cache.get('1445792025088884756') ||
+            await message.guild.channels.fetch('1445792025088884756').catch(() => null);
+        if (!logChannel) return;
+
+        // Deduplicate: skip if we've recently logged this message ID
+        const now = Date.now();
+        // cleanup old entries
+        for (const [id, ts] of recentlyLogged) {
+            if (now - ts > RECENT_LOG_TTL) recentlyLogged.delete(id);
+        }
+        if (message.id && recentlyLogged.has(message.id)) return;
+
+        const logEmbed = new EmbedBuilder()
+            .setColor(Colors.DarkRed)
+            .setTitle('Profanity Detected')
+            .setDescription(`A message containing profanity was detected from ${message.author.tag}.`)
+            .addFields(
+                { name: 'Channel', value: `<#${message.channel.id}>`, inline: true },
+                { name: 'Content', value: original ? `||${original}||` : '*no content*', inline: false }
+            )
+            .setTimestamp();
+
+        try {
+            await logChannel.send({ embeds: [logEmbed] });
+            if (message.id) recentlyLogged.set(message.id, Date.now());
+        } catch (err) {
+            console.error('There has been an error sending profanity log:', err);
+        }
+    } catch (err) {
+        console.error('Error in profanity handler:', err);
+    }
+});
+
 client.on("interactionCreate", async interaction => {
     if (!interaction || !interaction.user) return;
 
